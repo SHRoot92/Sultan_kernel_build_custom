@@ -107,7 +107,7 @@ jobs:
           echo "ksu_ver=${KSU_VER}"       >> "$GITHUB_OUTPUT"
 
           echo "Sultan tag : ${SULTAN_TAG}"
-          echo "xxKSU hash : ${KSU_VER}"
+          echo "xxKSU hash : r${KSU_VER}"
 
       # -----------------------------------------------------------------------
       - name: Configure defconfig
@@ -309,7 +309,7 @@ jobs:
             | Manager | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) |
             | Variant | Sultan (GCC) + xxKSU |
             | Sultan  | [${{ needs.build.outputs.sultan_tag }}](https://github.com/kerneltoast/android_kernel_google_tensynos/releases/tag/${{ needs.build.outputs.sultan_tag }}) |
-            | xxKSU   | `${{ needs.build.outputs.ksu_ver }}` |
+            | xxKSU   | `r${{ needs.build.outputs.ksu_ver }}` |
             | Date    | ${{ env.RELEASE_TAG }} |
 
             > Built automatically via GitHub Actions.
