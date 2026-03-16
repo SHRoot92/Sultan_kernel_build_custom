@@ -21,7 +21,7 @@ env:
 # ---------------------------------------------------------------------------
 jobs:
   build:
-    name: Build — ${{ matrix.codename }} Sultan GCC + xxKSU
+    name: Build ${{ matrix.device_label }} Kernel — Sultan + xxKSU
     runs-on: ubuntu-latest
 
     strategy:
@@ -39,8 +39,8 @@ jobs:
 
           - codename: gs201
             kernel_version: "5.10.209"
-            kernel_branch: 16.0.0-sultan
-            kernel_repo: https://github.com/kerneltoast/android_kernel_google_tensynos
+            kernel_branch: 14.0.0-sultan
+            kernel_repo: https://github.com/kerneltoast/android_kernel_google_raviole
             anykernel_branch: sultan-gs201
             defconfig: gs201_defconfig
             dtb_path: google-devices/gs201/dts
