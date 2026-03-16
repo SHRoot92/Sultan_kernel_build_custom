@@ -1,4 +1,4 @@
-name: Build Husky A16 Kernel — Sultan + xxKSU
+name: Build Pixel 7/8 A16 Kernel — Sultan + xxKSU
 
 on:
   workflow_dispatch:
@@ -38,9 +38,9 @@ jobs:
             device_label: Husky
 
           - codename: gs201
-            kernel_version: "5.10.209"
-            kernel_branch: 14.0.0-sultan
-            kernel_repo: https://github.com/kerneltoast/android_kernel_google_raviole
+            kernel_version: "6.1.145"
+            kernel_branch: 16.0.0-sultan
+            kernel_repo: https://github.com/kerneltoast/android_kernel_google_tensynos
             anykernel_branch: sultan-gs201
             defconfig: gs201_defconfig
             dtb_path: google-devices/gs201/dts
