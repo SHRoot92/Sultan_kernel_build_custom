@@ -44,13 +44,13 @@ jobs:
             anykernel_branch: sultan-gs201
             defconfig: gs201_defconfig
             dtb_path: google-devices/gs201/dts
-            device_label: Cheetah
+            device_label: gs201
 
           - codename: zumapro
             kernel_version: "6.1.145"
             kernel_branch: 16.0.0-sultan
             kernel_repo: https://github.com/kerneltoast/android_kernel_google_tensynos
-            anykernel_branch: zumapro
+            anykernel_branch: sultan-zumapro
             defconfig: zumapro_defconfig
             dtb_path: google-devices/zumapro/dts
             device_label: zumapro
