@@ -107,7 +107,7 @@ jobs:
           echo "ksu_ver=${KSU_VER}"       >> "$GITHUB_OUTPUT"
 
           echo "Sultan tag : ${SULTAN_TAG}"
-          echo "xxKSU hash : r${KSU_VER}"
+          echo "xxKSU version : r${KSU_VER}"
 
       # -----------------------------------------------------------------------
       - name: Configure defconfig
@@ -188,7 +188,7 @@ jobs:
           done
 
       # -----------------------------------------------------------------------
-      - name: Integrate xxKernelSU
+      - name: Integrate xxKSU
         working-directory: sultan
         run: |
           curl -LSs \
