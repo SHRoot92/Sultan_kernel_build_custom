@@ -1,4 +1,4 @@
-name: Build Pixel 7/8 A16 Kernel — Sultan + xxKSU
+name: Build Pixel 7/8/9 A16 Kernel — Sultan + xxKSU
 
 on:
   workflow_dispatch:
@@ -46,6 +46,15 @@ jobs:
             dtb_path: google-devices/gs201/dts
             device_label: Cheetah
 
+          - codename: zumapro
+            kernel_version: "6.1.145"
+            kernel_branch: 16.0.0-sultan
+            kernel_repo: https://github.com/kerneltoast/android_kernel_google_tensynos
+            anykernel_branch: zumapro
+            defconfig: zumapro_defconfig
+            dtb_path: google-devices/zumapro/dts
+            device_label: zumapro
+
     outputs:
       sultan_tag:    ${{ steps.meta.outputs.sultan_tag }}
       ksu_ver:       ${{ steps.meta.outputs.ksu_ver }}
@@ -90,7 +99,7 @@ jobs:
             exit 1
           fi
 
-          # Latest xxKSU version from the helper script
+          # Latest xxKSU short commit hash
           KSU_VER=$(./sh/get_ksuver.sh "backslashxx" "KernelSU" "${{ env.KSU_BRANCH }}" \
             || echo "unknown")
 
@@ -98,7 +107,7 @@ jobs:
           echo "ksu_ver=${KSU_VER}"       >> "$GITHUB_OUTPUT"
 
           echo "Sultan tag : ${SULTAN_TAG}"
-          echo "xxKSU ver  : r${KSU_VER}"
+          echo "xxKSU hash : ${KSU_VER}"
 
       # -----------------------------------------------------------------------
       - name: Configure defconfig
@@ -299,6 +308,8 @@ jobs:
             |---------|-------|
             | Manager | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) |
             | Variant | Sultan (GCC) + xxKSU |
+            | Sultan  | [${{ needs.build.outputs.sultan_tag }}](https://github.com/kerneltoast/android_kernel_google_tensynos/releases/tag/${{ needs.build.outputs.sultan_tag }}) |
+            | xxKSU   | `${{ needs.build.outputs.ksu_ver }}` |
             | Date    | ${{ env.RELEASE_TAG }} |
 
             > Built automatically via GitHub Actions.
