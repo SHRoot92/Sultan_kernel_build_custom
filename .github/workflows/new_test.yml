@@ -74,7 +74,7 @@ jobs:
           fi
 
           # Latest xxKSU version from the helper script
-          KSU_VER=$(./sh/get_ksuver.sh "backslashxx" "KernelSU" "${{ env.KSU_BRANCH }}" \
+          KSU_VER=$(./sh/extract_ksuver.sh "backslashxx" "KernelSU" "${{ env.KSU_BRANCH }}" \
             || echo "unknown")
 
           echo "sultan_tag=${SULTAN_TAG}" >> "$GITHUB_OUTPUT"
