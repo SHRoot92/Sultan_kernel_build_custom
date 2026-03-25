@@ -1,5 +1,5 @@
 
-name: Build Android Kernel with KowSU 
+name: Clang22
 
 on:
   workflow_dispatch:
