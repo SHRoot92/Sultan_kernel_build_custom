@@ -1,4 +1,4 @@
-name: Build Husky A16 Kernel — Sultan + xxKSU
+name: Build Husky A16 Kernel — Sultan + xxKSU Hookless
 
 on:
   workflow_dispatch:
