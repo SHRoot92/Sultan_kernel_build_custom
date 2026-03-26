@@ -14,7 +14,7 @@ env:
   ANYKERNEL_REPO: https://github.com/TheWildJames/AnyKernel3.git
   ANYKERNEL_BRANCH: sultan-zuma
   PATCHES_REPO: https://github.com/yapixel/kernel_patches
-  SCRIPTS_REPO: https://github.com/yalixel/sh
+  SCRIPTS_REPO: https://github.com/yapixel/sh
   KSU_REPO: backslashxx/KernelSU
   KSU_BRANCH: staging
   GCC_VERSION: "14.2.0"
