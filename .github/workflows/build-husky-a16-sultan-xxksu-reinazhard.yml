@@ -130,6 +130,8 @@ jobs:
           CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
           CONFIG_KSU_LSM_SECURITY_HOOKS=y
           CONFIG_KSU_THRONE_TRACKER_ALWAYS_THREADED=y
+          CONFIG_LTO_GCC=y
+          CONFIG_LTO_CP_CLONE=y
           EOF
 
       - name: Apply build-reproducibility patches
@@ -160,6 +162,7 @@ jobs:
           KBUILD_BUILD_HOST: build-host
           CROSS_COMPILE: ${{ env.GCC_PATH }}
           CC: ${{ env.GCC_PATH }}gcc
+          KCFLAGS: "-fno-ipa-icf"
         run: |
           make O=out \
             CROSS_COMPILE="$CROSS_COMPILE" \
@@ -169,6 +172,7 @@ jobs:
           make O=out \
             CROSS_COMPILE="$CROSS_COMPILE" \
             CC="$CC" \
+            KCFLAGS="$KCFLAGS" \
             -j"$(nproc --all)"
 
       - name: Package AnyKernel3 flashable ZIP
