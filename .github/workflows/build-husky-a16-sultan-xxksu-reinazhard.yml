@@ -37,7 +37,7 @@ jobs:
 
       - name: Install Reinazhard GCC ${{ env.GCC_VERSION }} cross-compiler
         run: |
-          sudo apt-get install -y zstd
+          sudo apt-get install -y zstd libfl2
           wget -q "${{ env.GCC_ARCHIVE_URL }}" -O gcc.tar.zst
           tar -I zstd -xf gcc.tar.zst
           GCC_BIN="$PWD/gcc-arm64/bin/aarch64-linux-gnu-"
