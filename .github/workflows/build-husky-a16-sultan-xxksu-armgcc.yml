@@ -159,6 +159,7 @@ jobs:
           KBUILD_BUILD_HOST: build-host
           CROSS_COMPILE: ${{ env.GCC_PATH }}
           CC: ${{ env.GCC_PATH }}gcc
+          KCFLAGS: "-fno-ipa-icf"
         run: |
           make O=out \
             CROSS_COMPILE="$CROSS_COMPILE" \
@@ -168,6 +169,7 @@ jobs:
           make O=out \
             CROSS_COMPILE="$CROSS_COMPILE" \
             CC="$CC" \
+            KCFLAGS="$KCFLAGS" \
             -j"$(nproc --all)"
 
       - name: Package AnyKernel3 flashable ZIP
