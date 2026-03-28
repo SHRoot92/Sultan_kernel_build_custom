@@ -13,7 +13,7 @@ env:
   PATCHES_REPO: https://github.com/yapixel/kernel_patches
   SCRIPTS_REPO: https://github.com/yapixel/sh
   KSU_REPO: backslashxx/KernelSU
-  KSU_BRANCH: staging
+  KSU_BRANCH: master
   GCC_VERSION: "15"
   GCC_ARCHIVE_URL: >-
     https://github.com/Reinazhard/guacamole_coin_crisis/releases/download/2026.03.28/toolchain-arm64-2026.03.28-gcc61f6c0415-binutilsa9f0052b.tar.zst
@@ -37,7 +37,7 @@ jobs:
 
       - name: Install Reinazhard GCC ${{ env.GCC_VERSION }} cross-compiler
         run: |
-          sudo apt-get install -y zstd libfl2
+          sudo apt-get install -y zstd libfl2 libdebuginfod1
           wget -q "${{ env.GCC_ARCHIVE_URL }}" -O gcc.tar.zst
           tar -I zstd -xf gcc.tar.zst
           GCC_BIN="$PWD/gcc-arm64/bin/aarch64-linux-gnu-"
