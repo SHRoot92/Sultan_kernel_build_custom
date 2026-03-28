@@ -215,7 +215,7 @@ jobs:
     - name: Install KowSU
       working-directory: ${{ env.KERNEL_DIR }}
       run: |
-        curl -LSs https://raw.githubusercontent.com/KOWX712/KernelSU/refs/heads/${{ env.KSUN_BRANCH }}/kernel/setup.sh | bash -s ${{ env.KSUN_BRANCH }}
+        curl -LSs https://raw.githubusercontent.com/debiansid/KernelSU/refs/heads/${{ env.KSUN_BRANCH }}/kernel/setup.sh | bash -s ${{ env.KSUN_BRANCH }}
 
     - name: Apply Clang 22 patch
       working-directory: ${{ env.KERNEL_DIR }}
