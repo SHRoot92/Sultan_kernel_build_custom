@@ -1,4 +1,4 @@
-name: Build Kernel with KowSU & Clang22
+name: Build GKI Kernel with KowSU & Clang22
 
 on:
   
@@ -22,7 +22,7 @@ env:
   BUILD: dev
   PIXEL8A: ${{ github.event.inputs.pixel8a || 'y' }}
   LTO_TYPE: ${{ github.event.inputs.lto_type || 'thin' }}
-  ZIP_PREFIX: AK3-A14-6.1.155-KowSU
+  ZIP_PREFIX: AK3-A14-6.1.162-KowSU
   KERNEL_DIR: common
   CONFIG_FILE: arch/arm64/configs/gki_defconfig
   OUT_DIR: out
@@ -37,7 +37,7 @@ env:
   SUSFS_BRANCH: gki-android14-6.1
   PATCHES_REPO: https://github.com/yapixel/kernel_patches
   PATCHES_BRANCH: dev
-  BUILDS_DIR: builds/6.1.155
+  BUILDS_DIR: builds/6.1.162
   LOCALVERSION:
   
   # Compiler configuration
@@ -70,7 +70,7 @@ jobs:
           df -BG
 
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
@@ -226,8 +226,9 @@ jobs:
           
           
           cd KernelSU
-          cp  ../../kernel_patches/kowsu/0001-10-add_SuSFS_to_KernelSU_KOWX712.patch ./
-          patch -p1 < 0001-10-add_SuSFS_to_KernelSU_KOWX712.patch || true
+          cp  ../../kernel_patches/kowsu/10_enable_susfs_for_ksu.patch./
+          patch -p1 < 10_enable_susfs_for_ksu.patch|| true
+          
           cd ../
           # Hide Stuff
           cp ../kernel_patches/69_hide_stuff.patch .
