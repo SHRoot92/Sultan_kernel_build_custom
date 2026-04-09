@@ -231,7 +231,7 @@ jobs:
         working-directory: sultan
         run: |
           echo "Applying 50 patch..."
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android16-6.12.patch ./
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch ./
           cp -r ../susfs4ksu/kernel_patches/fs/* ./fs/
           cp -r ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/
           patch --fuzz=10 -p1 < 50_add_susfs_in_gki-android14-6.1.patch || true
