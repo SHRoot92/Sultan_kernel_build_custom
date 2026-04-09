@@ -238,8 +238,9 @@ jobs:
           cp ../kernel_patches/sultan/sys.c_fix.patch .
           patch -p1 --fuzz=3 < sys.c_fix.patch || exit 1
           
-          cd KernelSU
-          patch -p1 -l --fuzz=3 < ../../kernel_patches/kowsu/10_enable_susfs_for_ksu.patch
+          echo "Applying 10 patch into drivers/kernelsu (KowSU symlink target)..."
+          cd drivers/kernelsu
+          patch -p2 -l --fuzz=3 < ../../../kernel_patches/kowsu/10_enable_susfs_for_ksu.patch
 
       # -----------------------------------------------------------------------
       - name: Build kernel
