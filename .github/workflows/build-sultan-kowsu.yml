@@ -90,7 +90,7 @@ jobs:
 
           git clone --depth=1 "${{ env.PATCHES_REPO }}" kernel_patches
           git clone --depth=1 "${{ env.SCRIPTS_REPO }}" sh
-          git clone --depth=5 "${{ env.SUSFS_REPO }} -b "$SUSFS_BRANCH" susfs
+          git clone --depth=5 "${{ env.SUSFS_REPO }}" -b "${{ env.SUSFS_BRANCH }}" susfs
 
       # -----------------------------------------------------------------------
       - name: Collect build metadata (sultan tag, KSU version)
