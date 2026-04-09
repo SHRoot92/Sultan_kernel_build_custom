@@ -11,6 +11,8 @@ env:
   ANYKERNEL_REPO: https://github.com/TheWildJames/AnyKernel3.git
   PATCHES_REPO: https://github.com/yapixel/kernel_patches
   SCRIPTS_REPO: https://github.com/TheSillyOk/sh
+  SUSFS_REPO: https://gitlab.com/simonpunk/susfs4ksu
+  SUSFS_BRANCH: gki-android16-6.12
   KSU_REPO: backslashxx/KernelSU
   KSU_BRANCH: master
   GCC_VERSION: "14.2.0"
@@ -22,7 +24,7 @@ env:
 # ---------------------------------------------------------------------------
 jobs:
   build:
-    name: Build ${{ matrix.device_label }} Kernel — Sultan + xxKSU
+    name: Build ${{ matrix.device_label }} Kernel — Sultan + KowSU
     runs-on: ubuntu-latest
 
     strategy:
@@ -88,6 +90,7 @@ jobs:
 
           git clone --depth=1 "${{ env.PATCHES_REPO }}" kernel_patches
           git clone --depth=1 "${{ env.SCRIPTS_REPO }}" sh
+          git clone --depth=5 "${{ env.SUSFS_REPO }} -b "$SUSFS_BRANCH" susfs
 
       # -----------------------------------------------------------------------
       - name: Collect build metadata (sultan tag, KSU version)
@@ -100,7 +103,6 @@ jobs:
             exit 1
           fi
 
-          # Latest xxKSU short commit hash
           KSU_VER=$(./sh/get_ksuver.sh "KOWX712" "KernelSU" "${{ env.KSU_BRANCH }}" \
             || echo "unknown")
 
@@ -223,6 +225,22 @@ jobs:
           curl -LSs \
             "https://raw.githubusercontent.com/${{ env.KSU_REPO }}/${{ env.KSU_BRANCH }}/kernel/setup.sh" \
             | bash -s -- "${{ env.KSU_BRANCH }}"
+
+       - name: Apply SUSFS Patches for KowSU 
+         working-directory: sultan
+         run: |
+          
+          echo "Applying SUSFS patches..."
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch ./
+          cp -r ../susfs4ksu/kernel_patches/fs/* ./fs/
+          cp -r ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/
+          patch --fuzz=10 -p1 < 50_add_susfs_in_gki-android14-6.1.patch || true
+          cp ../kernel_patches/sultan/sys.c_fix.patch .
+          patch -p1 --fuzz=3 < sys.c_fix.patch || exit 1
+          
+          cd KernelSU
+          cp  ../../kernel_patches/kowsu/10_enable_susfs_for_ksu.patch./
+          patch -p1 < 10_enable_susfs_for_ksu.patch|| true
 
       # -----------------------------------------------------------------------
       - name: Build kernel
