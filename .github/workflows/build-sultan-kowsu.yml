@@ -218,29 +218,30 @@ jobs:
             patch -p1 < "$patch"
           done
 
-      # -----------------------------------------------------------------------
       - name: Integrate KowSU
         working-directory: sultan
         run: |
-          curl -LSs \
-            "https://raw.githubusercontent.com/${{ env.KSU_REPO }}/${{ env.KSU_BRANCH }}/kernel/setup.sh" \
-            | bash -s -- "${{ env.KSU_BRANCH }}"
+          rm -rf KernelSU drivers/kernelsu
+          git clone --depth=1 --branch=master https://github.com/KOWX712/KernelSU.git KernelSU
+          ln -sf ../KernelSU/kernel drivers/kernelsu
+          grep -q "kernelsu" drivers/Makefile || echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
+          grep -q "drivers/kernelsu/Kconfig" drivers/Kconfig || sed -i '/endmenu/i source "drivers/kernelsu/Kconfig"' drivers/Kconfig
 
-      - name: Apply SUSFS Patches for KowSU 
+      - name: Apply SUSFS Patches for KowSU
         working-directory: sultan
         run: |
-          
-          echo "Applying SUSFS patches..."
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch ./
+          echo "Applying 50 patch..."
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android16-6.12.patch ./
           cp -r ../susfs4ksu/kernel_patches/fs/* ./fs/
           cp -r ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/
           patch --fuzz=10 -p1 < 50_add_susfs_in_gki-android14-6.1.patch || true
+
           cp ../kernel_patches/sultan/sys.c_fix.patch .
-          patch -p1 --fuzz=3 < sys.c_fix.patch || exit 1
-          
-          echo "Applying 10 patch into drivers/kernelsu (KowSU symlink target)..."
-          cd drivers/kernelsu
-          patch -p2 -l --fuzz=3 < ../../../kernel_patches/kowsu/10_enable_susfs_for_ksu.patch
+          patch -p1 --fuzz=3 < sys.c_fix.patch 
+
+          echo "Applying 10 patch..."
+          cd KernelSU
+          patch -p1 -l --fuzz=3 < ../../kernel_patches/kowsu/10_enable_susfs_for_ksu.patch 
 
       # -----------------------------------------------------------------------
       - name: Build kernel
