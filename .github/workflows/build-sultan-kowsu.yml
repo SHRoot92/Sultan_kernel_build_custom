@@ -226,9 +226,9 @@ jobs:
             "https://raw.githubusercontent.com/${{ env.KSU_REPO }}/${{ env.KSU_BRANCH }}/kernel/setup.sh" \
             | bash -s -- "${{ env.KSU_BRANCH }}"
 
-       - name: Apply SUSFS Patches for KowSU 
-         working-directory: sultan
-         run: |
+      - name: Apply SUSFS Patches for KowSU 
+        working-directory: sultan
+        run: |
           
           echo "Applying SUSFS patches..."
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch ./
