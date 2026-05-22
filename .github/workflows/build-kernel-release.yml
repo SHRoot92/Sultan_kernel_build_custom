@@ -4,6 +4,15 @@ on:
   workflow_dispatch:
 
 # ---------------------------------------------------------------------------
+# 设置 permissions 权限
+# ---------------------------------------------------------------------------
+permissions:
+  contents: write    # 允许创建 release 和 tag
+  actions: read
+  checks: read
+  metadata: read
+
+# ---------------------------------------------------------------------------
 # Shared environment variables used across jobs
 # ---------------------------------------------------------------------------
 env:
@@ -267,12 +276,14 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
+      contents: write    # 重要：允许创建 release
 
     steps:
       # -----------------------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       # -----------------------------------------------------------------------
       - name: Download build artifacts
@@ -291,20 +302,20 @@ jobs:
           
           echo "Creating release with tag: ${RELEASE_TAG}"
           
+          # 配置 git 用户信息
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
           # 检查 tag 是否已存在
-          if gh api "repos/${{ github.repository }}/git/refs/tags/${RELEASE_TAG}" &>/dev/null; then
+          if git rev-parse "${RELEASE_TAG}" >/dev/null 2>&1; then
             echo "::warning::Tag ${RELEASE_TAG} already exists, deleting..."
-            gh api "repos/${{ github.repository }}/git/refs/tags/${RELEASE_TAG}" -X DELETE
+            git tag -d "${RELEASE_TAG}"
+            git push origin --delete "${RELEASE_TAG}" || true
           fi
           
           # 创建新 tag
-          gh api "repos/${{ github.repository }}/git/refs" \
-            -X POST \
-            -f "ref=refs/tags/${RELEASE_TAG}" \
-            -f "sha=${{ github.sha }}" || {
-              echo "::error::Tag creation failed"
-              exit 1
-            }
+          git tag -a "${RELEASE_TAG}" -m "Sultan kernel build ${RELEASE_TAG}"
+          git push origin "${RELEASE_TAG}"
           
           echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
 
@@ -345,3 +356,4 @@ jobs:
             ---
             *Built automatically via GitHub Actions*
           files: artifacts/**/*.zip
+          fail_on_unmatched_files: false
