@@ -35,10 +35,9 @@ jobs:
           tar -xf gcc.tar.gz
           echo "TOOLCHAIN_PATH=$GITHUB_WORKSPACE/arm-gnu-toolchain-${{ env.GCC_VERSION }}-x86_64-aarch64-none-linux-gnu/bin/aarch64-none-linux-gnu-" >> "$GITHUB_ENV"
           
-
       - name: Clone source and dependencies
         run: |
-          git clone --depth=1 https://github.com/Trijal08/anaconda_kernel_google_tensynos -b qpr2-stable sultan
+          git clone --depth=1 https://github.com/yapixel/anaconda_kernel_google_tensynos -b qpr2-stable sultan
           cd sultan
           git submodule update --init --recursive
           cd ..
@@ -53,6 +52,7 @@ jobs:
             "../kernel_patches/sultan/60_scripts_mkcompile_h.patch"
             "../kernel_patches/sultan/61_scripts_setlocalversion.patch"
             "../kernel_patches/sultan/62_init_Makefile.patch"
+            
           )
           for p in "${PATCHES[@]}"; do
             [ -f "$p" ] && patch -p1 < "$p" || echo "Optional patch $p skipped."
@@ -200,11 +200,9 @@ jobs:
           KBUILD_BUILD_HOST: build-host
           CROSS_COMPILE: ${{ env.TOOLCHAIN_PATH }}
           CC: ${{ env.TOOLCHAIN_PATH }}gcc
-          KCFLAGS: "-Wno-error"
         run: |
-          make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" KCFLAGS="$KCFLAGS" zuma_defconfig
-          make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" KCFLAGS="$KCFLAGS" -j"$(nproc --all)"
-          
+          make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" zuma_defconfig
+          make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" -j"$(nproc --all)"
 
       - name: Package AnyKernel3
         id: package
@@ -267,7 +265,7 @@ jobs:
             ### 🚀 Build Information
             | Component | Details |
             | :--- | :--- |
-            | **Kernel Base** | anaconda ($S_TAG) |
+            | **Kernel Base** | Sultan ($S_TAG) |
             | **Manager** | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) |
             | **xxKSU Ver** | \`r$K_VER\` |
             | **SUSFS Ver** | \`$SU_VER\` |
