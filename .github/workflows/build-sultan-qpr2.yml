@@ -9,7 +9,7 @@ permissions:
 
 env:
   ANYKERNEL_REPO: https://github.com/TheWildJames/AnyKernel3.git
-  PATCHES_REPO: https://github.com/TheWildJames/kernel_patches.git
+  PATCHES_REPO: https://github.com/yapixel/kernel_patches.git
   SCRIPTS_REPO: https://github.com/TheSillyOk/sh
   KSU_REPO: KernelSU-Next/KernelSU-Next
   KSU_BRANCH: dev
