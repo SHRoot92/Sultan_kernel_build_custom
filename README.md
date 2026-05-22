@@ -1,4 +1,4 @@
-# Wild Kernels for Android
+# Sultan Kernels for Alphadroid 
 
 ## Your warranty is no longer valid!
 
