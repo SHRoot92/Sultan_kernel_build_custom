@@ -1,326 +1,347 @@
-name: Build and Release Sultan Kernels
-
-permissions:
-  contents: write
-  actions: write
+name: Build Pixel 7/8/9 A16 Kernel — Sultan + xxKSU
 
 on:
   workflow_dispatch:
-    inputs:
-      make_release:
-        description: 'Do you want to create a release?'
-        required: true
-        type: boolean
-        default: true
 
+# ---------------------------------------------------------------------------
+# Shared environment variables used across jobs
+# ---------------------------------------------------------------------------
+env:
+  ANYKERNEL_REPO: https://github.com/TheWildJames/AnyKernel3.git
+  PATCHES_REPO: https://github.com/yapixel/kernel_patches
+  SCRIPTS_REPO: https://github.com/TheSillyOk/sh
+  KSU_REPO: backslashxx/KernelSU
+  KSU_BRANCH: master
+  GCC_VERSION: "14.2.0"
+  GCC_ARCHIVE_URL: >-
+    https://kernel.org/pub/tools/crosstool/files/bin/x86_64/14.2.0/x86_64-gcc-14.2.0-nolibc-aarch64-linux.tar.gz
+  # 手动指定的 Sultan tag
+  SULTAN_TAG: "20260125"
+
+# ---------------------------------------------------------------------------
+# Job 1: Build kernel and produce a flashable ZIP
+# ---------------------------------------------------------------------------
 jobs:
-  build-kernel:
+  build:
+    name: Build zuma Kernel — Sultan + xxKSU
     runs-on: ubuntu-latest
-    if: ${{ inputs.make_release }}
-    outputs:
-      new_tag: ${{ steps.generate-tag.outputs.new_tag }}
-    strategy:
-      matrix:
-        variant:
-          - name: RKSU
-            ksu_setup_url: "https://raw.githubusercontent.com/rsuntk/KernelSU/main/kernel/setup.sh"
-            ksu_branch: "susfs-main"
-            susfs_repo: "https://gitlab.com/pershoot/susfs4ksu.git"
-            susfs_commit: ""
-            apply_manual_hooks: true
-            additional_patches: []
-            zip_prefix: "RKSU"
-          - name: MKSU
-            ksu_setup_url: "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh"
-            ksu_branch: "main"
-            susfs_repo: "https://gitlab.com/pershoot/susfs4ksu.git"
-            susfs_commit: ""
-            apply_manual_hooks: true
-            additional_patches:
-              - path: "../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
-                apply_dir: "./KernelSU"
-                fuzz: 0
-              - path: "../../kernel_patches/mksu/fix_core_hook.c.patch"
-                apply_dir: "./KernelSU"
-                fuzz: 3
-            zip_prefix: "MKSU"
-          - name: KSUN
-            ksu_setup_url: "https://raw.githubusercontent.com/pershoot/KernelSU-Next/next-susfs/kernel/setup.sh"
-            ksu_branch: "next-susfs"
-            susfs_repo: "https://gitlab.com/pershoot/susfs4ksu.git"
-            susfs_commit: ""
-            apply_manual_hooks: true
-            additional_patches: []
-            zip_prefix: "KSUN"
-          - name: KSU
-            ksu_setup_url: "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh"
-            ksu_branch: "37ef0d27067d3d7e7bf07a80547a1949864789c4"
-            susfs_repo: "https://gitlab.com/simonpunk/susfs4ksu.git"
-            susfs_commit: "b8d364c77554e10c6e1192242f53e5c0903f8728"
-            apply_manual_hooks: false
-            additional_patches:
-              - path: "../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch"
-                apply_dir: "./KernelSU"
-                fuzz: 0
-              - path: "../kernel_patches/syscall_hook/min_scope_syscall_hooks_v1.5.patch"
-                apply_dir: "."
-                fuzz: 3
-            zip_prefix: "KSU"
-    name: build-kernel-${{ matrix.variant.name }}
+
+    # Single device - no matrix needed
     env:
-      REPO_OWNER: yapixel
-      REPO_NAME: Sultan_KernelSU_SUSFS
-      GH_TOKEN: ${{ github.token }}
+      CODENAME: zuma
+      KERNEL_VERSION: "6.1.145"
+      KERNEL_BRANCH: 16.0.0-sultan
+      KERNEL_REPO: https://github.com/kerneltoast/android_kernel_google_tensynos
+      ANYKERNEL_BRANCH: sultan-zuma
+      DEFCONFIG: zuma_defconfig
+      DTB_PATH: google-devices/zuma/dts
+      DEVICE_LABEL: zuma
+
+    outputs:
+      sultan_tag:    ${{ steps.meta.outputs.sultan_tag }}
+      ksu_ver:       ${{ steps.meta.outputs.ksu_ver }}
+      zip_name:      ${{ steps.package.outputs.zip_name }}
+      artifact_name: ${{ steps.package.outputs.artifact_name }}
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      - name: Install dependencies
+      # -----------------------------------------------------------------------
+      - name: Install GCC ${{ env.GCC_VERSION }} cross-compiler
         run: |
-          sudo apt update
-          sudo apt install -y gcc-aarch64-linux-gnu jq
+          wget -q "${{ env.GCC_ARCHIVE_URL }}" -O gcc.tar.gz
+          tar -xf gcc.tar.gz
+          GCC_BIN="$PWD/gcc-${{ env.GCC_VERSION }}-nolibc/aarch64-linux/bin/aarch64-linux-"
+          echo "GCC_PATH=${GCC_BIN}" >> "$GITHUB_ENV"
 
-      - name: Set CONFIG environment variable
+      # -----------------------------------------------------------------------
+      - name: Clone kernel source and dependencies
         run: |
-          CONFIG="android_kernel_google_zuma"
-          echo "CONFIG=$CONFIG" >> $GITHUB_ENV
+          git clone --depth=1 "${{ env.KERNEL_REPO }}" \
+            -b "${{ env.KERNEL_BRANCH }}" sultan
 
-      - name: Get latest Sultan tag
+          git clone --depth=1 "${{ env.ANYKERNEL_REPO }}" \
+            -b "${{ env.ANYKERNEL_BRANCH }}" AK3
+
+          git clone --depth=1 "${{ env.PATCHES_REPO }}" kernel_patches
+          git clone --depth=1 "${{ env.SCRIPTS_REPO }}" sh
+
+      # -----------------------------------------------------------------------
+      - name: Checkout specific Sultan tag (${{ env.SULTAN_TAG }})
+        working-directory: sultan
         run: |
-          LATEST_SULTAN_TAG=$(gh api repos/kerneltoast/android_kernel_google_zuma/tags --jq '.[0].name')
-          if [ -z "$LATEST_SULTAN_TAG" ]; then
-            echo "Error: Could not fetch latest Sultan tag"
+          echo "Checking out Sultan tag: ${{ env.SULTAN_TAG }}"
+          git fetch --tags
+          git checkout "tags/${{ env.SULTAN_TAG }}" -b "build-${{ env.SULTAN_TAG }}"
+          
+          # 验证是否成功 checkout
+          CURRENT_TAG=$(git describe --tags --exact-match 2>/dev/null || echo "no-tag")
+          echo "Currently at: ${CURRENT_TAG}"
+          
+          if [[ "${CURRENT_TAG}" != "${{ env.SULTAN_TAG }}" ]]; then
+            echo "::warning::Not on exact tag, but continuing build"
+          fi
+
+      # -----------------------------------------------------------------------
+      - name: Collect build metadata (sultan tag, KSU version)
+        id: meta
+        run: |
+          # 使用手动指定的 Sultan tag
+          SULTAN_TAG="${{ env.SULTAN_TAG }}"
+          
+          # 验证 tag 是否存在
+          if ! git -C sultan tag | grep -q "^${SULTAN_TAG}$"; then
+            echo "::error::Sultan tag '${SULTAN_TAG}' not found in repository!"
+            echo "Available tags:"
+            git -C sultan tag | tail -20
             exit 1
           fi
-          echo "LATEST_SULTAN_TAG=$LATEST_SULTAN_TAG" >> $GITHUB_ENV
-          echo "Latest Sultan tag: $LATEST_SULTAN_TAG"
 
-      - name: Clone AnyKernel3 and other dependencies
+          # Latest xxKSU short commit hash
+          KSU_VER=$(./sh/get_ksuver.sh "backslashxx" "KernelSU" "${{ env.KSU_BRANCH }}" \
+            || echo "unknown")
+
+          echo "sultan_tag=${SULTAN_TAG}" >> "$GITHUB_OUTPUT"
+          echo "ksu_ver=${KSU_VER}"       >> "$GITHUB_OUTPUT"
+
+          echo "Sultan tag : ${SULTAN_TAG}"
+          echo "xxKSU version : r${KSU_VER}"
+
+      # -----------------------------------------------------------------------
+      - name: Configure defconfig
+        working-directory: sultan
         run: |
-          echo "Cloning AnyKernel3 and other dependencies..."
-          ANYKERNEL_BRANCH="sultan-zuma"
-          SUSFS_BRANCH="gki-android14-6.1-dev"
-          git clone https://github.com/TheWildJames/AnyKernel3.git -b "$ANYKERNEL_BRANCH"
-          git clone ${{ matrix.variant.susfs_repo }} -b "$SUSFS_BRANCH"
-          if [ -n "${{ matrix.variant.susfs_commit }}" ]; then
-            cd susfs4ksu
-            git checkout ${{ matrix.variant.susfs_commit }}
-            cd ..
-          fi
-          git clone https://github.com/yapixel/kernel_patches.git
-          git clone https://github.com/kerneltoast/${{ env.CONFIG }}
+          DEFCONFIG="arch/arm64/configs/${{ env.DEFCONFIG }}"
 
-      - name: Add KernelSU
-        run: |
-          cd "$CONFIG"
-          echo "Adding KernelSU..."
-          curl -LSs "${{ matrix.variant.ksu_setup_url }}" | bash -s ${{ matrix.variant.ksu_branch }}
+          # ----- Networking / BBR / ipset configs ----------------------------
+          EXTRA_CONFIGS=(
+            CONFIG_TMPFS_XATTR=y
+            CONFIG_TMPFS_POSIX_ACL=y
+            CONFIG_IP_NF_TARGET_TTL=y
+            CONFIG_IP6_NF_TARGET_HL=y
+            CONFIG_IP6_NF_MATCH_HL=y
+            CONFIG_TCP_CONG_ADVANCED=y
+            CONFIG_TCP_CONG_BBR=y
+            CONFIG_NET_SCH_FQ=y
+            CONFIG_TCP_CONG_BIC=n
+            CONFIG_TCP_CONG_WESTWOOD=n
+            CONFIG_TCP_CONG_HTCP=n
+            CONFIG_DEFAULT_BBR=y
+            CONFIG_BPF_STREAM_PARSER=y
+            CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+            CONFIG_NETFILTER_XT_SET=y
+            CONFIG_IP_SET=y
+            CONFIG_IP_SET_MAX=65534
+            CONFIG_IP_SET_BITMAP_IP=y
+            CONFIG_IP_SET_BITMAP_IPMAC=y
+            CONFIG_IP_SET_BITMAP_PORT=y
+            CONFIG_IP_SET_HASH_IP=y
+            CONFIG_IP_SET_HASH_IPMARK=y
+            CONFIG_IP_SET_HASH_IPPORT=y
+            CONFIG_IP_SET_HASH_IPPORTIP=y
+            CONFIG_IP_SET_HASH_IPPORTNET=y
+            CONFIG_IP_SET_HASH_IPMAC=y
+            CONFIG_IP_SET_HASH_MAC=y
+            CONFIG_IP_SET_HASH_NETPORTNET=y
+            CONFIG_IP_SET_HASH_NET=y
+            CONFIG_IP_SET_HASH_NETNET=y
+            CONFIG_IP_SET_HASH_NETPORT=y
+            CONFIG_IP_SET_HASH_NETIFACE=y
+            CONFIG_IP_SET_LIST_SET=y
+            CONFIG_NETFILTER_XT_TARGET_TPROXY=y
+            CONFIG_NETFILTER_XT_TARGET_REDIRECT=y
+            CONFIG_NETFILTER_XT_MATCH_SOCKET=y
+            CONFIG_NETFILTER_XT_MATCH_MARK=y
+            CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
+            CONFIG_NETFILTER_XT_MATCH_IPRANGE=y
+            CONFIG_NETFILTER_XT_MATCH_OWNER=y
+            CONFIG_NETFILTER_XT_MATCH_MAC=y
+            CONFIG_NETFILTER_XT_MATCH_CONNTRACK=y
+            CONFIG_NETFILTER_XT_MARK=y
+            CONFIG_NETFILTER_XT_CONNMARK=y
+            CONFIG_NETFILTER_XT_TARGET_CONNMARK=y
+            CONFIG_IP6_NF_NAT=y
+            CONFIG_IP6_NF_TARGET_REDIRECT=y
+            CONFIG_IP6_NF_TARGET_MASQUERADE=y
+          )
 
-      - name: Apply SUSFS patches
-        run: |
-          cd "$CONFIG"
-          echo "Applying SUSFS patches..."
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch ./
-          cp ../susfs4ksu/kernel_patches/fs/* ./fs/
-          cp ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/
-          # Allow SUSFS patch to fail gracefully and save rejects
-          if ! patch -p1 -F 3 < 50_add_susfs_in_gki-android14-6.1.patch; then
-            echo "Warning: SUSFS patch failed - saving rejects for debugging"
-            mkdir -p ../patch-rejects
-            mv *.rej ../patch-rejects/ 2>/dev/null || true
-          fi
-          if [ "${{ matrix.variant.apply_manual_hooks }}" = "true" ]; then
-            cp ../susfs4ksu/kernel_patches/60_scope-minimized_manual_hooks.patch ./
-            patch -p1 < 60_scope-minimized_manual_hooks.patch || { echo "Failed to apply manual hooks"; exit 1; }
-          fi
-          cp ../kernel_patches/sultan/sys.c_fix.patch ./
-          patch -p1 --fuzz=3 < sys.c_fix.patch || { echo "Failed to apply sys.c_fix"; exit 1; }
-          if [ -n "${{ toJson(matrix.variant.additional_patches) }}" ]; then
-            echo "${{ toJson(matrix.variant.additional_patches) }}" | jq -c '.[]' | while read -r patch; do
-              path=$(echo "$patch" | jq -r '.path')
-              apply_dir=$(echo "$patch" | jq -r '.apply_dir // "."')
-              fuzz=$(echo "$patch" | jq -r '.fuzz // 0')
-              if [ -n "$path" ]; then
-                echo "Applying: $path"
-                cp "$path" "$apply_dir/"
-                cd "$apply_dir"
-                patch -p1 --fuzz="$fuzz" < "$(basename "$path")" || echo "Warning: Failed $path"
-                cd - > /dev/null
-              fi
-            done
-          fi
-
-      - name: Upload patch rejects (if any)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: patch-rejects-${{ matrix.variant.name }}
-          path: patch-rejects/*.rej
-          if-no-files-found: ignore
-
-      - name: Get KernelSU version
-        run: |
-          cd "$CONFIG/KernelSU${{ matrix.variant.name == 'KSUN' && '-Next' || '' }}/kernel"
-          BASE_VERSION=10200
-          COMMIT_COUNT=$(/usr/bin/git rev-list --count HEAD)
-          KSU_VERSION=$(expr $COMMIT_COUNT "+" $BASE_VERSION)
-          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-
-      - name: Apply hide stuff patches
-        run: |
-          cd "$CONFIG"
-          cp ../kernel_patches/69_hide_stuff.patch ./
-          patch -p1 -F 3 < 69_hide_stuff.patch || { echo "Failed to apply hide stuff"; exit 1; }
-
-      - name: Add SUSFS configuration settings
-        run: |
-          cd "$CONFIG"
-          echo "CONFIG_KSU=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_TMPFS_XATTR=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP6_NF_TARGET_HL=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP6_NF_MATCH_HL=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_TCP_CONG_BBR=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_NET_SCH_FQ=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_TCP_CONG_BIC=n" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_TCP_CONG_HTCP=n" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_BPF_STREAM_PARSER=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_NETFILTER_XT_SET=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_MAX=65534" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_BITMAP_IP=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_BITMAP_IPMAC=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_BITMAP_PORT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_IP=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_IPMARK=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_IPPORT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_IPPORTIP=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_IPPORTNET=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_IPMAC=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_MAC=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_NETPORTNET=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_NET=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_NETNET=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_NETPORT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_HASH_NETIFACE=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP_SET_LIST_SET=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP6_NF_NAT=y" >> ./arch/arm64/configs/zuma_defconfig
-          echo "CONFIG_IP6_NF_TARGET_MASQUERADE=y" >> ./arch/arm64/configs/zuma_defconfig
-
-      - name: Run sed commands
-        run: |
-          cd "$CONFIG"
-          sed -i 's/CONFIG_LOCALVERSION="-Sultan"/CONFIG_LOCALVERSION="-g4e52994af56a-ab13829026"/' ./arch/arm64/configs/zuma_defconfig
-
-      - name: Build the kernel
-        run: |
-          cd "$CONFIG"
-          make zuma_defconfig -j$(nproc --all)
-          make V=1 -j$(nproc --all)
-
-      - name: Copy images
-        run: |
-          cd "$CONFIG"
-          cp ./out/arch/arm64/boot/Image.lz4 ../AnyKernel3/Image.lz4
-          cat ./out/google-devices/zuma/dts/*.dtb > ../AnyKernel3/dtb
-
-      - name: Create ZIP files
-        run: |
-          cd ./AnyKernel3
-          ZIP_NAME="${{ matrix.variant.zip_prefix }}-${{ env.KSUVER }}-zuma_A16_Sultan-${{ env.LATEST_SULTAN_TAG }}_SUSFS-${{ steps.generate-tag.outputs.new_tag || 'v1.5.12-r0' }}.zip"
-          zip -r "../$ZIP_NAME" ./*
-
-      - name: Generate new tag
-        id: generate-tag
-        run: |
-          LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
-          if [ -z "$LATEST_TAG" ]; then
-            LATEST_TAG="v1.5.12-r0"
-          fi
-          NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
-          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: kernel-zuma-${{ matrix.variant.name }}
-          path: |
-            *.zip
-
-  trigger-release:
-    runs-on: ubuntu-latest
-    needs: build-kernel
-    if: ${{ inputs.make_release }}
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Push new tag
-        run: |
-          NEW_TAG=${{ needs.build-kernel.outputs.new_tag }}
-          git tag $NEW_TAG
-          git push origin $NEW_TAG
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./downloaded-artifacts
-
-      - name: Create GitHub release
-        uses: actions/create-release@v1
-        with:
-          tag_name: ${{ needs.build-kernel.outputs.new_tag }}
-          prerelease: true
-          release_name: "*TEST BUILD* Sultan Kernels With KernelSU/MKSU & SUSFS v1.5.12 *TEST BUILD*"
-          body: |
-            This release contains KernelSU and MKSU variants with SUSFS v1.5.12
-            
-            ⚠️ **COMPATIBILITY NOTICE** ⚠️
-            Please ensure compatibility by comparing release dates with official Sultan kernel releases:
-            - Check official Sultan releases: https://github.com/kerneltoast/android_kernel_google_gs201/releases
-            - This build is based on the latest Sultan kernel commits as of build date
-            - Always verify your device's Android version matches the kernel target (Android 14)
-            - Recommended to use kernels released within 30 days of official Sultan updates
-            
-            Module: https://github.com/sidex15/ksu_module_susfs
-            Managers: https://github.com/backslashxx/KernelSU
-            
-            Features:
-            [+] KernelSU Magic Managers v1.0.5
-            [+] SUSFS v1.5.12
-            [+] Maphide LineageOS Detections
-            [+] Futile Maphide for jit-zygote-cache Detections
-            [+] Magic Mount Support
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Upload release assets
-        run: |
-          for file in ./downloaded-artifacts/kernel-*/*; do
-              if [ -f "$file" ]; then
-                echo "Uploading $file..."
-                gh release upload ${{ needs.build-kernel.outputs.new_tag }} "$file"
-              fi
+          for cfg in "${EXTRA_CONFIGS[@]}"; do
+            key="${cfg%%=*}"
+            sed -i -E "s/.*${key}=.*$/# ${key} removed by CI/g" "$DEFCONFIG"
+            echo "$cfg" >> "$DEFCONFIG"
           done
+
+          # ----- KernelSU configs --------------------------------------------
+          cat >> "$DEFCONFIG" << 'EOF'
+          CONFIG_KSU=y
+          CONFIG_KSU_EXTRAS=y
+          CONFIG_KSU_ALLOWLIST_WORKAROUND=n
+          CONFIG_KSU_DEBUG=n
+          CONFIG_KSU_KPROBES_HOOK=n
+          CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
+          CONFIG_KSU_LSM_SECURITY_HOOKS=y
+          CONFIG_KSU_THRONE_TRACKER_ALWAYS_THREADED=y
+          EOF
+
+      # -----------------------------------------------------------------------
+      - name: Apply build-reproducibility patches
+        working-directory: sultan
+        run: |
+          PATCHES=(
+            ../kernel_patches/sultan/60_scripts_mkcompile_h.patch
+            ../kernel_patches/sultan/61_scripts_setlocalversion.patch
+            ../kernel_patches/sultan/62_init_Makefile.patch
+          )
+
+          for patch in "${PATCHES[@]}"; do
+            if [[ -f "$patch" ]]; then
+              echo "Applying patch: $(basename "$patch")"
+              patch -p1 < "$patch" || echo "::warning::Patch $(basename "$patch") may have failed"
+            else
+              echo "::warning::Patch not found: $patch"
+            fi
+          done
+
+      # -----------------------------------------------------------------------
+      - name: Integrate xxKSU
+        working-directory: sultan
+        run: |
+          curl -LSs \
+            "https://raw.githubusercontent.com/${{ env.KSU_REPO }}/${{ env.KSU_BRANCH }}/kernel/setup.sh" \
+            | bash -s -- "${{ env.KSU_BRANCH }}"
+
+      # -----------------------------------------------------------------------
+      - name: Build kernel
+        working-directory: sultan
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          KBUILD_BUILD_USER: build-user
+          KBUILD_BUILD_HOST: build-host
+          CROSS_COMPILE: ${{ env.GCC_PATH }}
+          CC: ${{ env.GCC_PATH }}gcc
+        run: |
+          make O=out \
+            CROSS_COMPILE="$CROSS_COMPILE" \
+            CC="$CC" \
+            ${{ env.DEFCONFIG }}
+
+          make O=out \
+            CROSS_COMPILE="$CROSS_COMPILE" \
+            CC="$CC" \
+            -j"$(nproc --all)"
+
+      # -----------------------------------------------------------------------
+      - name: Package AnyKernel3 flashable ZIP
+        id: package
+        run: |
+          cp sultan/out/arch/arm64/boot/Image.lz4 AK3/Image.lz4
+          cat sultan/out/${{ env.DTB_PATH }}/*.dtb > AK3/dtb
+
+          SULTAN_TAG="${{ steps.meta.outputs.sultan_tag }}"
+          KSU_VER="${{ steps.meta.outputs.ksu_ver }}"
+          ZIP_NAME="Sultan-${{ env.CODENAME }}-${SULTAN_TAG}-xxKSU-r${KSU_VER}.zip"
+          ARTIFACT_NAME="Sultan-${{ env.CODENAME }}-${SULTAN_TAG}-xxKSU-r${KSU_VER}"
+
+          ( cd AK3 && zip -r9 "../${ZIP_NAME}" . -x "*.git*" "README.md" )
+
+          echo "zip_name=${ZIP_NAME}"           >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
+          echo "ZIP_PATH=$GITHUB_WORKSPACE/${ZIP_NAME}" >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------------
+      - name: Upload kernel ZIP as artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.artifact_name }}
+          path: ${{ env.ZIP_PATH }}
+
+# ---------------------------------------------------------------------------
+# Job 2: Create a GitHub Release from the built artifact
+# ---------------------------------------------------------------------------
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: ./artifacts
+
+      # -----------------------------------------------------------------------
+      - name: Create release with Sultan tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 使用 Sultan tag 作为 release tag
+          RELEASE_TAG="${{ needs.build.outputs.sultan_tag }}"
+          
+          echo "Creating release with tag: ${RELEASE_TAG}"
+          
+          # 检查 tag 是否已存在
+          if gh api "repos/${{ github.repository }}/git/refs/tags/${RELEASE_TAG}" &>/dev/null; then
+            echo "::warning::Tag ${RELEASE_TAG} already exists, deleting..."
+            gh api "repos/${{ github.repository }}/git/refs/tags/${RELEASE_TAG}" -X DELETE
+          fi
+          
+          # 创建新 tag
+          gh api "repos/${{ github.repository }}/git/refs" \
+            -X POST \
+            -f "ref=refs/tags/${RELEASE_TAG}" \
+            -f "sha=${{ github.sha }}" || {
+              echo "::error::Tag creation failed"
+              exit 1
+            }
+          
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------------
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2.6.1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: Sultan Kernel ${{ env.RELEASE_TAG }}
+          body: |
+            ## Sultan Kernel Build for Pixel 7 (zuma)
+            
+            ### Build Details
+            
+            | Field   | Value |
+            |---------|-------|
+            | **Device** | Google Pixel 7 / Pixel 7 Pro (zuma) |
+            | **Sultan Base** | [${{ needs.build.outputs.sultan_tag }}](https://github.com/kerneltoast/android_kernel_google_tensynos/releases/tag/${{ needs.build.outputs.sultan_tag }}) |
+            | **KernelSU** | xxKSU `r${{ needs.build.outputs.ksu_ver }}` |
+            | **Build Date** | $(date '+%Y-%m-%d %H:%M:%S UTC') |
+            
+            ### Features
+            
+            - Sultan kernel optimizations
+            - xxKSU (KernelSU) integrated
+            - BBR TCP congestion control
+            - ipset support
+            - Additional networking features
+            
+            ### Installation
+            
+            1. Download the ZIP file
+            2. Flash in custom recovery (TWRP/PixelOS Recovery)
+            3. Reboot and enjoy
+            
+            > ⚠️ **Warning**: Make sure you have a backup before flashing
+            
+            ---
+            *Built automatically via GitHub Actions*
+          files: artifacts/**/*.zip
