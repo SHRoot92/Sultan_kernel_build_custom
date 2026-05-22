@@ -200,9 +200,11 @@ jobs:
           KBUILD_BUILD_HOST: build-host
           CROSS_COMPILE: ${{ env.TOOLCHAIN_PATH }}
           CC: ${{ env.TOOLCHAIN_PATH }}gcc
+          KCFLAGS: "-Wno-error=macro-redefined"
         run: |
-          make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" zuma_defconfig
-          make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" -j"$(nproc --all)"
+          make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" KCFLAGS="$KCFLAGS" zuma_defconfig
+          make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" KCFLAGS="$KCFLAGS" -j"$(nproc --all)"
+          
 
       - name: Package AnyKernel3
         id: package
