@@ -10,7 +10,6 @@ permissions:
   contents: write    # 允许创建 release 和 tag
   actions: read
   checks: read
-  metadata: read
 
 # ---------------------------------------------------------------------------
 # Shared environment variables used across jobs
