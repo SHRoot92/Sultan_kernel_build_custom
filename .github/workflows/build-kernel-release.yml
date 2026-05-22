@@ -1,4 +1,4 @@
-name: Build Pixel 7/8/9 A16 Kernel — Sultan + xxKSU
+name: Build Pixel 8 A16 Kernel — Sultan + xxKSU
 
 on:
   workflow_dispatch:
