@@ -50,7 +50,7 @@ jobs:
 
       - name: Clone Source
         run: |
-          git clone --depth=1 https://github.com/kerneltoast/android_kernel_google_tensynos -b 16.0.0-sultan sultan
+          git clone https://github.com/kerneltoast/android_kernel_google_tensynos -b 16.0.0-sultan sultan
           cd sultan
           git checkout 20260125
           cd ..
