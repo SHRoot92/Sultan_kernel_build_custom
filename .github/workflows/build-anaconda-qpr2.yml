@@ -37,7 +37,7 @@ jobs:
           
       - name: Clone source and dependencies
         run: |
-          git clone --depth=1 https://github.com/Trijal08/anaconda_kernel_google_tensynos -b qpr2-stable sultan
+          git clone --depth=1 https://github.com/yapixel/anaconda_kernel_google_tensynos -b qpr2-stable sultan
           cd sultan
           git submodule update --init --recursive
           cd ..
