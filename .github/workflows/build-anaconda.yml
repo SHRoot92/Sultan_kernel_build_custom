@@ -285,7 +285,10 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write
+    
+     contents: write
+     actions: write
+      
 
     steps:
       - uses: actions/checkout@v6
