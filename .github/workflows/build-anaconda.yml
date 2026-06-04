@@ -1,4 +1,4 @@
-name: Build anaconda + xxKSU + SUSFS
+name: Matrix Build Anaconda KSU + SUSFS
 
 permissions:
   contents: write
