@@ -1,11 +1,20 @@
 name: Matrix Build Anaconda
 
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Create GitHub Release"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
 permissions:
   contents: write
   actions: write
-
-on:
-  workflow_dispatch:
 
 env:
   ANYKERNEL_REPO: https://github.com/TheWildJames/AnyKernel3.git
@@ -43,9 +52,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Install GCC
         run: |
+          set -euo pipefail
+
           BASE_URL="https://developer.arm.com/-/media/Files/downloads/gnu/${{ env.GCC_VERSION }}/binrel/"
           ARCHIVE="arm-gnu-toolchain-${{ env.GCC_VERSION }}-x86_64-aarch64-none-linux-gnu.tar.xz"
 
@@ -56,6 +69,8 @@ jobs:
 
       - name: Clone source and dependencies
         run: |
+          set -euo pipefail
+
           git clone --depth=1 https://github.com/yapixel/anaconda_kernel_google_tensynos -b qpr2-stable sultan
 
           cd sultan
@@ -69,6 +84,8 @@ jobs:
       - name: Apply build-reproducibility patches
         working-directory: sultan
         run: |
+          set -euo pipefail
+
           PATCHES=(
             "../kernel_patches/sultan/60_scripts_mkcompile_h.patch"
             "../kernel_patches/sultan/61_scripts_setlocalversion.patch"
@@ -76,15 +93,21 @@ jobs:
           )
 
           for p in "${PATCHES[@]}"; do
-            [ -f "$p" ] && patch -p1 < "$p" || echo "Optional patch $p skipped."
+            if [ -f "$p" ]; then
+              patch -p1 < "$p"
+            else
+              echo "Optional patch $p skipped."
+            fi
           done
 
       - name: Collect build metadata
         id: meta
         run: |
+          set -euo pipefail
+
           S_TAG=$(git -C sultan rev-parse --short HEAD)
 
-          chmod +x sh/get_ksuver.sh
+          chmod +x sh/get_ksuver.sh || true
           K_VER=$(./sh/get_ksuver.sh "backslashxx" "KernelSU" "${{ env.KSU_BRANCH }}" || echo "integrated")
 
           SU_VER=$(grep -m1 'define SUSFS_VERSION' sultan/include/linux/susfs.h | grep -oP '".*?"' | tr -d '"' || echo "integrated")
@@ -93,10 +116,11 @@ jobs:
 
           echo "--- LOGGING METADATA ---"
           echo "device: ${{ matrix.device }}"
+          echo "pretty_name: ${{ matrix.pretty_name }}"
+          echo "sultan_commit: $S_TAG"
           echo "ksu_version: $K_VER"
           echo "susfs_version: $SU_VER"
           echo "gcc_version: $G_VER"
-          echo "sultan_commit: $S_TAG"
           echo "------------------------"
 
           echo "sultan_tag=${S_TAG}" >> "$GITHUB_OUTPUT"
@@ -106,6 +130,8 @@ jobs:
 
       - name: Integrate xxKSU Submodule
         run: |
+          set -euo pipefail
+
           cd sultan
 
           if [ -d "drivers" ]; then
@@ -122,6 +148,8 @@ jobs:
 
       - name: Setup atp4pixel Config Pillars
         run: |
+          set -euo pipefail
+
           cd sultan
 
           DEFCONFIG="${{ matrix.defconfig_path }}"
@@ -129,13 +157,13 @@ jobs:
           echo "" >> "$DEFCONFIG"
 
           cat <<EOF >> "$DEFCONFIG"
-          # KernelSU Core (Source Integrated)
+          # KernelSU Core Source Integrated
           CONFIG_KSU=y
           # CONFIG_KSU_KPROBES_HOOK is not set
           # CONFIG_KSU_DEBUG is not set
           # CONFIG_KSU_ALLOWLIST_WORKAROUND is not set
 
-          # SUSFS Stealth Pillars (Optimized for Kernel 6.1)
+          # SUSFS Stealth Pillars Optimized for Kernel 6.1
           CONFIG_KSU_SUSFS=y
           CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
           CONFIG_KSU_SUSFS_SUS_PATH=y
@@ -152,7 +180,7 @@ jobs:
           CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
           # CONFIG_KSU_SUSFS_ENABLE_LOG is not set
 
-          # Networking & System Pillars
+          # Networking and System Pillars
           CONFIG_NETFILTER_ADVANCED=y
           CONFIG_IP_NF_TARGET_TTL=y
           CONFIG_IP6_NF_TARGET_HL=y
@@ -217,12 +245,12 @@ jobs:
           CONFIG_TMPFS_INODE64=y
           EOF
 
-          # Guardrails
           sed -i 's/CONFIG_TCP_CONG_BIC=y/CONFIG_TCP_CONG_BIC=n/' "$DEFCONFIG"
           sed -i 's/CONFIG_TCP_CONG_WESTWOOD=y/CONFIG_TCP_CONG_WESTWOOD=n/' "$DEFCONFIG"
           sed -i 's/CONFIG_TCP_CONG_HTCP=y/CONFIG_TCP_CONG_HTCP=n/' "$DEFCONFIG"
           sed -i 's/CONFIG_KPROBES=y/# CONFIG_KPROBES is not set/' "$DEFCONFIG"
           sed -i '/CONFIG_KPROBES/d' "$DEFCONFIG"
+
           echo "# CONFIG_KPROBES is not set" >> "$DEFCONFIG"
           echo "CONFIG_WERROR=n" >> "$DEFCONFIG"
 
@@ -234,12 +262,16 @@ jobs:
           CROSS_COMPILE: ${{ env.TOOLCHAIN_PATH }}
           CC: ${{ env.TOOLCHAIN_PATH }}gcc
         run: |
+          set -euo pipefail
+
           make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" ${{ matrix.defconfig }}
           make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" -j"$(nproc --all)"
 
       - name: Package AnyKernel3
         id: package
         run: |
+          set -euo pipefail
+
           if [ -f sultan/out/arch/arm64/boot/Image.lz4 ]; then
             cp sultan/out/arch/arm64/boot/Image.lz4 AK3/Image.lz4
           else
@@ -257,6 +289,7 @@ jobs:
           ( cd AK3 && zip -r9 "../${ZIP_NAME}" . -x "*.git*" )
 
           echo "ZIP_PATH=$GITHUB_WORKSPACE/${ZIP_NAME}" >> "$GITHUB_ENV"
+          echo "ZIP_NAME=${ZIP_NAME}" >> "$GITHUB_ENV"
 
       - name: Upload kernel ZIP
         uses: actions/upload-artifact@v7
@@ -267,11 +300,16 @@ jobs:
 
   release:
     needs: build
+    if: ${{ github.event.inputs.release == 'true' }}
     runs-on: ubuntu-latest
 
     permissions:
       contents: write
       actions: write
+
+    concurrency:
+      group: release-${{ github.ref_name }}
+      cancel-in-progress: false
 
     steps:
       - name: Checkout repository
@@ -279,17 +317,32 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Stop if this commit changes workflow files
+      - name: Ensure release-anchor branch exists
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "GITHUB_SHA=${GITHUB_SHA}"
-          git log -1 --oneline
+          set -euo pipefail
 
-          if git diff-tree --no-commit-id --name-only -r HEAD | grep -q '^.github/workflows/'; then
-            echo "This commit modifies workflow files."
-            echo "GITHUB_TOKEN cannot create a tag pointing to this commit."
-            echo "Push another non-workflow commit, then start a new workflow_dispatch run."
-            exit 1
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+
+          if git ls-remote --exit-code --heads origin release-anchor >/dev/null 2>&1; then
+            echo "release-anchor branch already exists."
+            exit 0
           fi
+
+          echo "Creating release-anchor branch..."
+
+          CURRENT_SHA="$(git rev-parse HEAD)"
+
+          git checkout --orphan release-anchor
+          git rm -rf . >/dev/null 2>&1 || true
+          git clean -fdx >/dev/null 2>&1 || true
+
+          git commit --allow-empty -m "chore: create release anchor"
+          git push origin HEAD:release-anchor
+
+          git checkout "$CURRENT_SHA"
 
       - name: Download kernel artifacts
         uses: actions/download-artifact@v8
@@ -297,22 +350,31 @@ jobs:
           path: ./artifacts
           merge-multiple: true
 
-      - name: Tag and Release
+      - name: List artifacts debug
+        run: |
+          set -euo pipefail
+
+          echo "=== artifacts directory contents ==="
+          find ./artifacts -type f -maxdepth 3 -print
+
+      - name: Create Release using release-anchor
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+
           git fetch --tags --force
 
-          DATE=$(date +"%Y.%m.%d")
-          MAX_REV=$(git tag -l "${DATE}-r*" | sed "s/${DATE}-r//" | sort -n | tail -n1)
-          REV=$(( ${MAX_REV:-0} + 1 ))
-          TAG="${DATE}-r${REV}"
+          shopt -s nullglob
+          ZIP_FILES=(artifacts/*.zip)
 
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
+          if [ ${#ZIP_FILES[@]} -eq 0 ]; then
+            echo "No ZIP files found in artifacts."
+            exit 1
+          fi
 
-          git tag "$TAG"
-          git push origin "$TAG"
+          echo "Found ZIP files:"
+          printf '%s\n' "${ZIP_FILES[@]}"
 
           NOTES_FILE="release_notes.md"
 
@@ -322,15 +384,6 @@ jobs:
           | Device | Kernel Base | Manager | xxKSU Ver | SUSFS Ver | Compiler | ZIP |
           | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
           EOF
-
-          shopt -s nullglob
-
-          ZIP_FILES=(artifacts/*.zip)
-
-          if [ ${#ZIP_FILES[@]} -eq 0 ]; then
-            echo "No ZIP files found in artifacts."
-            exit 1
-          fi
 
           for zip in "${ZIP_FILES[@]}"; do
             ZIP_NAME="$(basename "$zip")"
@@ -369,8 +422,41 @@ jobs:
           - **Fixes:** ADDRTYPE Match, Google VPN XFRM, TTL 64 Share
 
           > Built for Pixel 7 gs201 and Pixel 8 zuma.
+          > Download the attached kernel ZIP files. GitHub auto-generated source archives are not used for this build.
           EOF
 
-          gh release create "$TAG" artifacts/*.zip \
+          echo "Generated release notes:"
+          cat "$NOTES_FILE"
+
+          DATE=$(date +"%Y.%m.%d")
+          TAG=""
+
+          for attempt in $(seq 1 20); do
+            git fetch --tags --force
+
+            MAX_REV=$(git tag -l "${DATE}-r*" | sed "s/${DATE}-r//" | sort -n | tail -n1)
+            REV=$(( ${MAX_REV:-0} + 1 ))
+            TAG="${DATE}-r${REV}"
+
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+              echo "Tag $TAG already exists. Retrying..."
+              TAG=""
+              sleep 2
+              continue
+            fi
+
+            echo "Using tag: $TAG"
+            break
+          done
+
+          if [ -z "$TAG" ]; then
+            echo "Failed to generate unique tag."
+            exit 1
+          fi
+
+          gh release create "$TAG" "${ZIP_FILES[@]}" \
+            --target release-anchor \
             --title "Kernel Build — $TAG" \
             --notes-file "$NOTES_FILE"
+
+          echo "Release created successfully: $TAG"
