@@ -46,11 +46,11 @@ jobs:
 
       - name: Install GCC
         run: |
-          BASE_URL="https://developer.arm.com/-/media/Files/downloads/gnu/"${{ env.GCC_VERSION }}"/binrel/"
-          ARCHIVE="arm-gnu-toolchain-"${{ env.GCC_VERSION }}"-x86_64-aarch64-none-linux-gnu.tar.xz"
+          BASE_URL="https://developer.arm.com/-/media/Files/downloads/gnu/${{ env.GCC_VERSION }}/binrel/"
+          ARCHIVE="arm-gnu-toolchain-${{ env.GCC_VERSION }}-x86_64-aarch64-none-linux-gnu.tar.xz"
 
-          wget -q "${BASE_URL}/${ARCHIVE}" -O gcc.tar.gz
-          tar -xf gcc.tar.gz
+          wget -q "${BASE_URL}/${ARCHIVE}" -O gcc.tar.xz
+          tar -xf gcc.tar.xz
 
           echo "TOOLCHAIN_PATH=$GITHUB_WORKSPACE/arm-gnu-toolchain-${{ env.GCC_VERSION }}-x86_64-aarch64-none-linux-gnu/bin/aarch64-none-linux-gnu-" >> "$GITHUB_ENV"
 
@@ -89,7 +89,7 @@ jobs:
 
           SU_VER=$(grep -m1 'define SUSFS_VERSION' sultan/include/linux/susfs.h | grep -oP '".*?"' | tr -d '"' || echo "integrated")
 
-          G_VER=$(${{ env.TOOLCHAIN_PATH }}gcc --version | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          G_VER=$(${{ env.TOOLCHAIN_PATH }}gcc --version | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || echo "${{ env.GCC_VERSION }}")
 
           echo "--- LOGGING METADATA ---"
           echo "device: ${{ matrix.device }}"
@@ -226,7 +226,7 @@ jobs:
           echo "# CONFIG_KPROBES is not set" >> "$DEFCONFIG"
           echo "CONFIG_WERROR=n" >> "$DEFCONFIG"
 
-      - name: Build Kernel (Production)
+      - name: Build Kernel Production
         working-directory: sultan
         env:
           KBUILD_BUILD_USER: build-user
@@ -251,14 +251,12 @@ jobs:
           S_TAG="${{ steps.meta.outputs.sultan_tag }}"
           K_VER="${{ steps.meta.outputs.ksu_ver }}"
           SU_VER="${{ steps.meta.outputs.susfs_ver }}"
-          G_VER="${{ steps.meta.outputs.gcc_ver }}"
 
           ZIP_NAME="${{ matrix.zip_prefix }}-${S_TAG}-xxKSU-r${K_VER}-SUSFS-${SU_VER}.zip"
 
           ( cd AK3 && zip -r9 "../${ZIP_NAME}" . -x "*.git*" )
 
           echo "ZIP_PATH=$GITHUB_WORKSPACE/${ZIP_NAME}" >> "$GITHUB_ENV"
-          
 
       - name: Upload kernel ZIP
         uses: actions/upload-artifact@v7
@@ -266,24 +264,35 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: |
             ${{ env.ZIP_PATH }}
-          
 
   release:
     needs: build
     runs-on: ubuntu-latest
 
     permissions:
-    
-     contents: write
-     actions: write
-      
+      contents: write
+      actions: write
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout repository
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v8
+      - name: Stop if this commit changes workflow files
+        run: |
+          echo "GITHUB_SHA=${GITHUB_SHA}"
+          git log -1 --oneline
+
+          if git diff-tree --no-commit-id --name-only -r HEAD | grep -q '^.github/workflows/'; then
+            echo "This commit modifies workflow files."
+            echo "GITHUB_TOKEN cannot create a tag pointing to this commit."
+            echo "Push another non-workflow commit, then start a new workflow_dispatch run."
+            exit 1
+          fi
+
+      - name: Download kernel artifacts
+        uses: actions/download-artifact@v8
         with:
           path: ./artifacts
           merge-multiple: true
@@ -292,6 +301,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          git fetch --tags --force
+
           DATE=$(date +"%Y.%m.%d")
           MAX_REV=$(git tag -l "${DATE}-r*" | sed "s/${DATE}-r//" | sort -n | tail -n1)
           REV=$(( ${MAX_REV:-0} + 1 ))
@@ -299,6 +310,7 @@ jobs:
 
           git config user.name "github-actions"
           git config user.email "actions@github.com"
+
           git tag "$TAG"
           git push origin "$TAG"
 
@@ -311,21 +323,52 @@ jobs:
           | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
           EOF
 
-          for meta in artifacts/*.meta.env; do
-            source "$meta"
+          shopt -s nullglob
 
-            echo "| **${PRETTY_NAME} (${DEVICE})** | Sultan (${S_TAG}) | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | \`r${K_VER}\` | \`${SU_VER}\` | GCC ${GCC_VER} | \`${ZIP_NAME}\` |" >> "$NOTES_FILE"
+          ZIP_FILES=(artifacts/*.zip)
+
+          if [ ${#ZIP_FILES[@]} -eq 0 ]; then
+            echo "No ZIP files found in artifacts."
+            exit 1
+          fi
+
+          for zip in "${ZIP_FILES[@]}"; do
+            ZIP_NAME="$(basename "$zip")"
+
+            DEVICE="unknown"
+            PRETTY_NAME="Unknown"
+            S_TAG="unknown"
+            K_VER="unknown"
+            SU_VER="unknown"
+
+            if [[ "$ZIP_NAME" =~ ^Sultan-([^-]+)-([^-]+)-xxKSU-r([^-]+)-SUSFS-(.+)\.zip$ ]]; then
+              DEVICE="${BASH_REMATCH[1]}"
+              S_TAG="${BASH_REMATCH[2]}"
+              K_VER="${BASH_REMATCH[3]}"
+              SU_VER="${BASH_REMATCH[4]}"
+
+              case "$DEVICE" in
+                gs201)
+                  PRETTY_NAME="Pixel 7"
+                  ;;
+                zuma)
+                  PRETTY_NAME="Pixel 8"
+                  ;;
+              esac
+            fi
+
+            echo "| **${PRETTY_NAME} (${DEVICE})** | Sultan (${S_TAG}) | [backslashxx/KernelSU](https://github.com/backslashxx/KernelSU) | \`r${K_VER}\` | \`${SU_VER}\` | GCC ${{ env.GCC_VERSION }} | \`${ZIP_NAME}\` |" >> "$NOTES_FILE"
           done
 
           cat >> "$NOTES_FILE" <<EOF
 
-          ### 🛠️ Networking Features (Fortress)
+          ### 🛠️ Networking Features Fortress
 
-          - **TCP Congestion:** BBR (v1) + FQ
-          - **Routing:** Policy Routing (Table 1066) + IPSet (64k)
-          - **Fixes:** ADDRTYPE Match, Google VPN (XFRM), TTL 64 Share
+          - **TCP Congestion:** BBR v1 + FQ
+          - **Routing:** Policy Routing Table 1066 + IPSet 64k
+          - **Fixes:** ADDRTYPE Match, Google VPN XFRM, TTL 64 Share
 
-          > Built for Pixel 7 (gs201) and Pixel 8 (zuma).
+          > Built for Pixel 7 gs201 and Pixel 8 zuma.
           EOF
 
           gh release create "$TAG" artifacts/*.zip \
