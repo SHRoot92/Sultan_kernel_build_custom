@@ -1,4 +1,4 @@
-name: Natrix Build Sultan + xxKSU 
+name: Matrix Build Sultan + xxKSU 
 
 on:
   workflow_dispatch:
