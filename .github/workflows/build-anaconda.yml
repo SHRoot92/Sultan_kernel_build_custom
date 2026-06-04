@@ -257,20 +257,8 @@ jobs:
 
           ( cd AK3 && zip -r9 "../${ZIP_NAME}" . -x "*.git*" )
 
-          META_FILE="${{ matrix.device }}.meta.env"
-
-          {
-            echo "DEVICE=${{ matrix.device }}"
-            echo "PRETTY_NAME=${{ matrix.pretty_name }}"
-            echo "S_TAG=${S_TAG}"
-            echo "K_VER=${K_VER}"
-            echo "SU_VER=${SU_VER}"
-            echo "GCC_VER=${G_VER}"
-            echo "ZIP_NAME=${ZIP_NAME}"
-          } > "$META_FILE"
-
           echo "ZIP_PATH=$GITHUB_WORKSPACE/${ZIP_NAME}" >> "$GITHUB_ENV"
-          echo "META_PATH=$GITHUB_WORKSPACE/${META_FILE}" >> "$GITHUB_ENV"
+          
 
       - name: Upload kernel ZIP
         uses: actions/upload-artifact@v7
@@ -278,7 +266,7 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: |
             ${{ env.ZIP_PATH }}
-            ${{ env.META_PATH }}
+          
 
   release:
     needs: build
