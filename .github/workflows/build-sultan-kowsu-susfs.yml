@@ -8,7 +8,6 @@ concurrency:
   cancel-in-progress: false
 env:
   KERNEL_REPO: https://github.com/kerneltoast/android_kernel_google_tensynos.git
-  KERNEL_BRANCH: 16.0.0-sultan
   SULTAN_TAG: "20260125"
   ANYKERNEL_REPO: https://github.com/TheWildJames/AnyKernel3.git
   ANYKERNEL_BRANCH: sultan-zuma
@@ -19,6 +18,8 @@ env:
   KSU_REPO: KOWX712/KernelSU
   KSU_BRANCH: master
   GCC_VERSION: "14.2.rel1"
+  # 更新 KowSU + SuSFS 联动补丁的远程下载地址
+  KSU_SUSFS_PATCH_URL: https://raw.githubusercontent.com/yapixel/cheetah_kernel_build/refs/heads/main/.github/patches/kowsu/10_enable_susfs_for_ksu.patch
 jobs:
   build:
     name: Build zuma Kernel
@@ -42,13 +43,7 @@ jobs:
           echo "GCC_PATH=$GITHUB_WORKSPACE/arm-gnu-toolchain-${{ env.GCC_VERSION }}-x86_64-aarch64-none-linux-gnu/bin/aarch64-none-linux-gnu-" >> "$GITHUB_ENV"
       - name: Clone Source
         run: |
-          # 克隆指定分支并获取指定 Tag 的源码
-          git clone --branch "${{ env.KERNEL_BRANCH }}" "${{ env.KERNEL_REPO }}" sultan
-          cd sultan
-          git fetch --tags
-          git checkout "tags/${{ env.SULTAN_TAG }}" -b "build-${{ env.SULTAN_TAG }}"
-          cd ..
-
+          git clone --depth=1 --branch "${{ env.SULTAN_TAG }}" "${{ env.KERNEL_REPO }}" sultan
           git clone --depth=1 "${{ env.ANYKERNEL_REPO }}" -b "${{ env.ANYKERNEL_BRANCH }}" AK3
           git clone --depth=1 "${{ env.PATCHES_REPO }}" kernel_patches
           git clone --depth=1 "${{ env.SCRIPTS_REPO }}" sh
@@ -90,15 +85,18 @@ jobs:
           apply_patch_once "../kernel_patches/sultan/60_scripts_mkcompile_h.patch"
           apply_patch_once "../kernel_patches/sultan/61_scripts_setlocalversion.patch"
           apply_patch_once "../kernel_patches/sultan/62_init_Makefile.patch"
+          
           # 2. SuSFS Setup & Patches
           mkdir -p fs include/linux
           cp ../susfs4ksu/kernel_patches/fs/susfs.c fs/
           cp ../susfs4ksu/kernel_patches/include/linux/susfs.h include/linux/
           cp ../susfs4ksu/kernel_patches/include/linux/susfs_def.h include/linux/
           SUSFS_PATCH="$GITHUB_WORKSPACE/susfs4ksu/kernel_patches/50_add_susfs_in_gki-android14-6.1.patch"
-          KSU_PATCH="$GITHUB_WORKSPACE/.github/patches/kowsu/10_enable_susfs_for_ksu.patch"
           
           apply_patch_once "$SUSFS_PATCH"
+          
+          # 3. 下载并应用外部远程 KSU SuSFS 补丁
+          curl -LSs "${{ env.KSU_SUSFS_PATCH_URL }}" -o ../10_enable_susfs_for_ksu.patch
           (
             if [ -d "KernelSU" ]; then
               cd KernelSU
@@ -108,7 +106,7 @@ jobs:
               echo "::error::KernelSU directory not found"
               exit 1
             fi
-            apply_patch_once "$KSU_PATCH"
+            apply_patch_once "../../10_enable_susfs_for_ksu.patch"
           )
       - name: Inject Configuration
         working-directory: sultan
