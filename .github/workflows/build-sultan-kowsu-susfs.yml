@@ -7,7 +7,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 env:
+  KERNEL_REPO: https://github.com/kerneltoast/android_kernel_google_tensynos.git
+  KERNEL_BRANCH: 16.0.0-sultan
+  SULTAN_TAG: "20260125"
   ANYKERNEL_REPO: https://github.com/TheWildJames/AnyKernel3.git
+  ANYKERNEL_BRANCH: sultan-zuma
   PATCHES_REPO: https://github.com/yapixel/kernel_patches
   SUSFS_REPO_URL: https://gitlab.com/simonpunk/susfs4ksu
   SUSFS_REPO_BRANCH: sultan-shiba-susfs-minimal
@@ -15,7 +19,6 @@ env:
   KSU_REPO: KOWX712/KernelSU
   KSU_BRANCH: master
   GCC_VERSION: "14.2.rel1"
-  SULTAN_TAG: "20260125"
 jobs:
   build:
     name: Build zuma Kernel
@@ -39,18 +42,17 @@ jobs:
           echo "GCC_PATH=$GITHUB_WORKSPACE/arm-gnu-toolchain-${{ env.GCC_VERSION }}-x86_64-aarch64-none-linux-gnu/bin/aarch64-none-linux-gnu-" >> "$GITHUB_ENV"
       - name: Clone Source
         run: |
-          git clone "${{ env.KERNEL_REPO }}" -b "${{ env.KERNEL_BRANCH }}" sultan
-
+          # 克隆指定分支并获取指定 Tag 的源码
+          git clone --branch "${{ env.KERNEL_BRANCH }}" "${{ env.KERNEL_REPO }}" sultan
           cd sultan
           git fetch --tags
-          git checkout "tags/${{ env.SULTAN_TAG }}" -b "build-${{ env.SULTAN_TAG }}-${{ matrix.codename }}"
+          git checkout "tags/${{ env.SULTAN_TAG }}" -b "build-${{ env.SULTAN_TAG }}"
           cd ..
 
-          git clone --depth=1 "${{ env.ANYKERNEL_REPO }}" -b "${{ matrix.anykernel_branch }}" AK3
+          git clone --depth=1 "${{ env.ANYKERNEL_REPO }}" -b "${{ env.ANYKERNEL_BRANCH }}" AK3
           git clone --depth=1 "${{ env.PATCHES_REPO }}" kernel_patches
           git clone --depth=1 "${{ env.SCRIPTS_REPO }}" sh
           git clone --depth=1 --branch="${{ env.SUSFS_REPO_BRANCH }}" "${{ env.SUSFS_REPO_URL }}" susfs4ksu
-          
       - name: Metadata
         id: meta
         run: |
@@ -115,7 +117,6 @@ jobs:
           CC: ${{ env.GCC_PATH }}gcc
         run: |
           set -euo pipefail
-         
           make O=out CROSS_COMPILE="$CROSS_COMPILE" CC="$CC" zuma_defconfig
           ./scripts/config --file out/.config \
             -e CONFIG_KSU \
@@ -138,11 +139,9 @@ jobs:
         run: |
           set -euo pipefail
           cp sultan/out/arch/arm64/boot/Image.lz4 AK3/Image.lz4
-         
           cat sultan/out/google-devices/zuma/dts/*.dtb > AK3/dtb
           CLEAN_S_TAG=$(printf '%s' "${{ steps.meta.outputs.s_tag }}" | sed 's/[^A-Za-z0-9._-]/_/g')
-         
-          ZIP_NAME="Sultan-zuma-${CLEAN_S_TAG}-KowSU-SUSFS-mini-${{ steps.meta.outputs.susfs_ver }}+${{ steps.meta.outputs.ksu_ver }}."zip""
+          ZIP_NAME="Sultan-zuma-${CLEAN_S_TAG}-KowSU-SUSFS-mini-${{ steps.meta.outputs.susfs_ver }}+${{ steps.meta.outputs.ksu_ver }}.zip"
           (cd AK3 && zip -r9 "../$ZIP_NAME" . -x "*.git*")
           mkdir -p out_zip
           mv "$ZIP_NAME" out_zip/
@@ -189,7 +188,7 @@ jobs:
             exit 1
           fi
           cat > release_notes.md <<EOF
-          ### 🚀 Build Information (Minimal)
+          ### Build Information (Minimal)
 
           | Component | Details |
           | :--- | :--- |
@@ -200,7 +199,7 @@ jobs:
           | **Compiler** | GCC 14.2.rel1 |
           | **SuSFS Branch** | \`$SUSFS_REPO_BRANCH\` |
 
-          ### 🛠️ Networking Features (Fortress)
+          ### Networking Features (Fortress)
           - **TCP Congestion:** BBR (v1) + FQ
           - **Routing:** Policy Routing (Table 1066) + IPSet (64k)
           - **Fixes:** ADDRTYPE Match, Google VPN (XFRM), TTL 64 Share
